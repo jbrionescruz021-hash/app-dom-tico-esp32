@@ -8,18 +8,17 @@
     alarma magnética, y activa los relés correspondientes.
   - Lee el contacto RC-36 (reed) y reporta si está abierto o cerrado.
 
-  Conexión (ver README):
-    DHT11 DATA  → GPIO 4
-    Relé 1 (ventilador)          IN → GPIO 26
-    Relé 2 (alarma magnética)    IN → GPIO 27
-    RC-36 (contacto magnético)   un cable → GPIO 25, el otro → GND
+  Conexión (todos los relés de 5 V):
+    Relé del ventilador (módulo de 1 canal, independiente):
+      VCC → VIN/5V · GND → GND · IN → GPIO 26
+    Relé de la alarma (módulo de 2 canales SRD-05VDC-SL-C, se usa el canal 1):
+      VCC → VIN/5V · GND → GND · IN1 → GPIO 27   (IN2 queda libre)
+    DHT11 DATA  → GPIO 4  (VCC → 3V3, GND → GND)
+    RC-36 (aviso de estado): un cable → GPIO 25, el otro → GND
 
-  Librerías necesarias (Arduino IDE → Gestor de librerías):
-    - "DHT sensor library" de Adafruit
-    - "Adafruit Unified Sensor" de Adafruit
-
-  Antes de compilar: copia config.example.h como config.h
-  y llena tus datos de Wi-Fi, URL del servidor y API key.
+  Contactos de cada relé (lado de carga):
+    COM = común, NO = abierto en reposo, NC = cerrado en reposo.
+    Alarma: relé activo = ABIERTA, relé en reposo = CERRADA.
 */
 
 #include <WiFi.h>
@@ -34,13 +33,14 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 // ---------- Salidas / entradas de control ----------
-#define FAN_PIN    26     // Relé 1: ventilador
-#define ALARM_PIN  27     // Relé 2: alarma magnética (relé activo = ABIERTA)
+#define FAN_PIN    26     // Módulo de 1 canal: ventilador
+#define ALARM_PIN  27     // Módulo de 2 canales (canal 1): alarma magnética (relé activo = ABIERTA)
 #define RC36_PIN   25     // Contacto magnético RC-36 (con INPUT_PULLUP, al otro lado va GND)
 
-// Los módulos de relé más comunes se activan con nivel BAJO (LOW).
-// Si tu relé se activa con HIGH, cambia a false.
-#define RELAY_ACTIVE_LOW true
+// Cada módulo de relé puede ser distinto. La mayoría se activa con nivel BAJO (LOW).
+// Si un relé se activa con HIGH, pon false en el que corresponda.
+#define FAN_RELAY_ACTIVE_LOW    true   // módulo de 1 canal (ventilador)
+#define ALARM_RELAY_ACTIVE_LOW  true   // módulo de 2 canales (alarma)
 
 // Nivel que lee el pin cuando el RC-36 está CERRADO (imán cerca / puerta cerrada).
 // Con contacto normalmente cerrado y cableado a GND es LOW. Si ves el estado invertido, cámbialo a HIGH.
@@ -49,8 +49,8 @@ DHT dht(DHTPIN, DHTTYPE);
 bool fanOn = false;
 bool alarmaAbierta = false;
 
-void setRele(uint8_t pin, bool activo) {
-  digitalWrite(pin, (activo != RELAY_ACTIVE_LOW) ? HIGH : LOW);
+void setRele(uint8_t pin, bool activo, bool activoBajo) {
+  digitalWrite(pin, (activo != activoBajo) ? HIGH : LOW);
 }
 
 const char* leerContacto() {
@@ -150,12 +150,12 @@ void sincronizar() {
 
     if (nuevoFan != fanOn) {
       fanOn = nuevoFan;
-      setRele(FAN_PIN, fanOn);
+      setRele(FAN_PIN, fanOn, FAN_RELAY_ACTIVE_LOW);
       Serial.printf("Ventilador: %s\n", fanOn ? "ENCENDIDO" : "APAGADO");
     }
     if (nuevoAlarma != alarmaAbierta) {
       alarmaAbierta = nuevoAlarma;
-      setRele(ALARM_PIN, alarmaAbierta);
+      setRele(ALARM_PIN, alarmaAbierta, ALARM_RELAY_ACTIVE_LOW);
       Serial.printf("Alarma magnética: %s\n", alarmaAbierta ? "ABIERTA" : "CERRADA");
     }
   } else if (codigo > 0) {
@@ -172,8 +172,8 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
 
   // Primero el nivel de reposo y luego OUTPUT, para que los relés no den un pulso al arrancar
-  setRele(FAN_PIN, false);
-  setRele(ALARM_PIN, false);
+  setRele(FAN_PIN, false, FAN_RELAY_ACTIVE_LOW);
+  setRele(ALARM_PIN, false, ALARM_RELAY_ACTIVE_LOW);
   pinMode(FAN_PIN, OUTPUT);
   pinMode(ALARM_PIN, OUTPUT);
   pinMode(RC36_PIN, INPUT_PULLUP);

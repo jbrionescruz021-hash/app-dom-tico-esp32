@@ -38,16 +38,16 @@ Dashboard web (instalable como app) para ver en tiempo real la temperatura y hum
 
 | Componente | ESP32 |
 |------------|-------|
-| Relé 1 (ventilador) · IN | GPIO 26 |
-| Relé 2 (alarma magnética) · IN | GPIO 27 |
+| Relé de 1 canal (ventilador) · IN | GPIO 26 |
+| Módulo de 2 canales, canal 1 (alarma magnética) · IN1 | GPIO 27 |
 | Contacto RC-36 (un cable) | GPIO 25 |
 | Contacto RC-36 (otro cable) | GND |
 | Módulos de relé · VCC / GND | 5 V (VIN) / GND |
 
-- El switch **Ventilador** activa el relé 1: conecta el ventilador por los bornes **COM** y **NO** del relé.
-- El switch **Alarma magnética · RC-36** activa el relé 2: relé activo = **Abierta**, relé en reposo = **Cerrada**. Conecta el circuito de la alarma por **COM** y **NO** (o **NC** si lo necesitas invertido).
+- El switch **Ventilador** activa el relé de 1 canal: conecta el ventilador por los bornes **COM** y **NO** del relé.
+- El switch **Alarma magnética · RC-36** activa el canal 1 del módulo de 2 canales: relé activo = **Abierta**, relé en reposo = **Cerrada**. Conecta el circuito de la alarma por **COM** y **NO** (o **NC** si lo necesitas invertido).
 - El RC-36 se lee como entrada con `INPUT_PULLUP` y el dashboard muestra si el contacto está *abierto* o *cerrado*. Si lo ves invertido, cambia `RC36_CLOSED_LEVEL` en el `.ino`.
-- Si tu módulo de relé se activa con nivel alto, cambia `RELAY_ACTIVE_LOW` a `false`.
+- Si tu módulo de relé se activa con nivel alto, cambia `FAN_RELAY_ACTIVE_LOW` o `ALARM_RELAY_ACTIVE_LOW` a `false`.
 - Si el ventilador o la alarma trabajan con corriente de red (110/220 V), hazlo con el equipo desenergizado y las conexiones aisladas.
 
 ### Cambios respecto al DHT22
