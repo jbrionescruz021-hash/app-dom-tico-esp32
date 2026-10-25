@@ -4,6 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>App Domótico · ESP32</title>
+  <meta name="theme-color" content="#1f6f7d" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Domótico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -22,6 +29,10 @@
       --ok: #2f9e5b;
       --warn: #c98a12;
       --off: #a8a29a;
+      --ok-soft: #e1f2e7;
+      --warn-soft: #f8edd6;
+      --danger: #c8322b;
+      --danger-soft: #f6dcda;
       --radius: 20px;
       --shadow: 0 1px 2px rgba(28,27,25,.04), 0 8px 24px rgba(28,27,25,.05);
     }
@@ -37,6 +48,10 @@
         --temp-soft: #3a2420;
         --hum: #4fb5c7;
         --hum-soft: #1b3236;
+        --ok-soft: #1c3325;
+        --warn-soft: #3a2f18;
+        --danger: #e5534b;
+        --danger-soft: #3d1f1d;
         --shadow: none;
       }
     }
@@ -44,9 +59,11 @@
       --bg: #121211; --surface: #1c1c1a; --surface-2: #232321; --text: #f1efea;
       --muted: #a39e95; --line: #2f2e2b; --temp: #f07a55; --temp-soft: #3a2420;
       --hum: #4fb5c7; --hum-soft: #1b3236; --shadow: none;
+      --ok-soft: #1c3325; --warn-soft: #3a2f18; --danger: #e5534b; --danger-soft: #3d1f1d;
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       background: var(--bg);
@@ -129,6 +146,68 @@
     .empty.show { display: grid; }
 
     footer { margin-top: 28px; font-size: 12px; color: var(--muted); text-align: center; }
+
+    /* ---------- Encabezado: acciones ---------- */
+    .head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 10px 16px;
+      font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    }
+    .btn.primary { background: var(--hum); border-color: var(--hum); color: #fff; }
+    .btn:focus-visible, .switch input:focus-visible + .track { outline: 2px solid var(--hum); outline-offset: 2px; }
+
+    /* ---------- Control ---------- */
+    .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 28px 0 12px; }
+    .section-title h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+    .lock { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .lock input {
+      width: 120px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--surface); color: var(--text); font: inherit; letter-spacing: .2em;
+    }
+    .lock .error { color: var(--danger); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 640px) { .controls { grid-template-columns: 1fr; } }
+    .control { display: grid; gap: 14px; }
+    .control-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .control-name { font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+    .control-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .fan .icon { background: var(--hum-soft); color: var(--hum); }
+    .door .icon { background: var(--temp-soft); color: var(--temp); }
+
+    .switch { position: relative; display: inline-block; flex: none; }
+    .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .switch input:disabled { cursor: not-allowed; }
+    .track {
+      display: block; width: 62px; height: 36px; border-radius: 999px; background: var(--surface-2);
+      border: 1px solid var(--line); position: relative; transition: background .2s;
+    }
+    .track::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; border-radius: 50%;
+      background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s;
+    }
+    .switch input:checked + .track { background: var(--ok); border-color: var(--ok); }
+    .door .switch input:checked + .track { background: var(--temp); border-color: var(--temp); }
+    .switch input:checked + .track::after { transform: translateX(26px); }
+    .switch input:disabled + .track { opacity: .5; }
+
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip {
+      font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+      background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
+    }
+    .chip.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+    .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+    .chip.danger { background: var(--danger); color: #fff; border-color: transparent; }
+    .control.alert { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+
+    /* ---------- Instalar app ---------- */
+    .install-help {
+      margin-top: 16px; font-size: 14px; line-height: 1.55; color: var(--text);
+    }
+    .install-help ol { margin: 8px 0 0; padding-left: 20px; }
+    .install-help b { font-weight: 600; }
+    @media (prefers-reduced-motion: reduce) { .track, .track::after, .bar span { transition: none; } .status.online .dot::after { animation: none; } }
   </style>
 </head>
 <body>
@@ -138,12 +217,19 @@
         <div class="eyebrow">App Domótico · ESP32</div>
         <h1 id="deviceName">Clima interior</h1>
       </div>
-      <div class="status" id="status">
-        <span class="dot"></span>
-        <span id="statusText">Conectando…</span>
-        <span class="ago" id="ago"></span>
+      <div class="head-actions">
+        <button class="btn primary" id="installBtn" type="button" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>
+          Instalar app
+        </button>
+        <div class="status" id="status">
+          <span class="dot"></span>
+          <span id="statusText">Conectando…</span>
+          <span class="ago" id="ago"></span>
+        </div>
       </div>
     </header>
+    <div class="card install-help" id="installHelp" hidden></div>
 
     <section class="grid">
       <article class="card temp">
@@ -207,6 +293,65 @@
       </article>
     </section>
 
+    <div class="section-title">
+      <h2>Control</h2>
+      <form class="lock" id="lockForm" autocomplete="off">
+        <span id="lockText">Ingresa el PIN para usar los interruptores</span>
+        <input id="pin" type="password" inputmode="numeric" maxlength="12" placeholder="PIN" aria-label="PIN de control" />
+        <button class="btn" type="submit" id="pinBtn">Desbloquear</button>
+        <span class="error" id="pinError" role="alert"></span>
+      </form>
+    </div>
+
+    <section class="controls">
+      <article class="card control fan" id="fanCard">
+        <div class="control-row">
+          <div class="label">
+            <span class="icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-7 4-7 2 0 3 2 2 4-1 1.5-3 2.5-6 3Zm2 2c4 0 7 1 7 4 0 2-2 3-4 2-1.5-1-2.5-3-3-6Zm-2 2c0 4-1 7-4 7-2 0-3-2-2-4 1-1.5 3-2.5 6-3Zm-2-2c-4 0-7-1-7-4 0-2 2-3 4-2 1.5 1 2.5 3 3 6Z"/></svg>
+            </span>
+            Ventilador
+          </div>
+        </div>
+        <div class="control-row">
+          <div>
+            <div class="control-name" id="fanName">Apagado</div>
+            <div class="control-sub">Relé · GPIO 26</div>
+          </div>
+          <label class="switch" title="Encender o apagar el ventilador">
+            <input type="checkbox" id="fanSwitch" role="switch" aria-label="Ventilador" disabled />
+            <span class="track"></span>
+          </label>
+        </div>
+        <div class="chips"><span class="chip" id="fanChip">Sin datos de la placa</span></div>
+      </article>
+
+      <article class="card control door" id="doorCard">
+        <div class="control-row">
+          <div class="label">
+            <span class="icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M2 21h20M12 12h.01M19 8v6"/></svg>
+            </span>
+            Alarma de puerta
+          </div>
+        </div>
+        <div class="control-row">
+          <div>
+            <div class="control-name" id="alarmName">Desarmada</div>
+            <div class="control-sub">Sensor magnético MC-38 · GPIO 27</div>
+          </div>
+          <label class="switch" title="Armar o desarmar la alarma de la puerta">
+            <input type="checkbox" id="alarmSwitch" role="switch" aria-label="Alarma de puerta" disabled />
+            <span class="track"></span>
+          </label>
+        </div>
+        <div class="chips">
+          <span class="chip" id="doorChip">Puerta: sin datos</span>
+          <span class="chip" id="alarmChip" hidden></span>
+        </div>
+      </article>
+    </section>
+
     <section class="card chart-card">
       <div class="card-head" style="flex-wrap:wrap; gap:12px;">
         <div class="legend">
@@ -226,15 +371,23 @@
       </div>
     </section>
 
-    <footer>Actualiza cada 10 s · El ESP32 envía una lectura cada 15 s</footer>
+    <footer>Estado de la placa cada 3 s · Lecturas del DHT11 cada 15 s</footer>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-    const ONLINE_S = 60;   // si la última lectura tiene menos de 60 s → en línea
+    const ONLINE_S = 30;   // si la placa se reportó hace menos de 30 s → en línea
     const STALE_S = 300;   // hasta 5 min → señal intermitente
+    const PIN_KEY = 'domotico-pin';
+
+    let controlHabilitado = false;
+    let estadoControl = null;   // lo que pidió el dashboard
+    let estadoPlaca = null;     // lo que reporta la placa
+    let pin = '';
+    let enviando = false;
+    try { pin = localStorage.getItem(PIN_KEY) || ''; } catch (e) { /* sin almacenamiento */ }
 
     let horas = 1;
     let ultimaFecha = null;
@@ -277,12 +430,17 @@
     async function cargarUltima() {
       try {
         const r = await fetch('/api/latest');
-        const { reading, server_time } = await r.json();
+        const { reading, server_time, control, device, control_enabled } = await r.json();
         desfaseServidor = new Date(server_time) - Date.now();
+        controlHabilitado = control_enabled;
+        estadoControl = control;
+        estadoPlaca = device;
+        if (device && device.seen_at) ultimaFecha = new Date(device.seen_at).getTime();
+        pintarControl();
         if (!reading) { pintarEstado(); return; }
 
         const t = Number(reading.temperature), h = Number(reading.humidity);
-        ultimaFecha = new Date(reading.created_at).getTime();
+        ultimaFecha = Math.max(ultimaFecha || 0, new Date(reading.created_at).getTime());
         $('temp').textContent = fmt(t);
         $('hum').textContent = fmt(h);
         $('tempBar').style.width = pct(t, 0, 50) + '%';
@@ -382,10 +540,172 @@
       cargarHistorial();
     });
 
+    // ---------- Control ----------
+    function placaReciente() {
+      if (!estadoPlaca || !estadoPlaca.seen_at) return false;
+      return (Date.now() + desfaseServidor - new Date(estadoPlaca.seen_at)) / 1000 <= ONLINE_S;
+    }
+
+    function chip(el, texto, tipo) {
+      el.textContent = texto;
+      el.className = 'chip' + (tipo ? ' ' + tipo : '');
+      el.hidden = false;
+    }
+
+    function pintarControl() {
+      const c = estadoControl || { fan: false, alarm_armed: false };
+      const d = estadoPlaca || {};
+      const reciente = placaReciente();
+      const desbloqueado = controlHabilitado && Boolean(pin);
+
+      // Interruptores: muestran la orden actual (no saltan mientras se envía)
+      if (!enviando) {
+        $('fanSwitch').checked = c.fan;
+        $('alarmSwitch').checked = c.alarm_armed;
+      }
+      $('fanSwitch').disabled = !desbloqueado || enviando;
+      $('alarmSwitch').disabled = !desbloqueado || enviando;
+      $('fanName').textContent = c.fan ? 'Encendido' : 'Apagado';
+      $('alarmName').textContent = c.alarm_armed ? 'Armada' : 'Desarmada';
+
+      // Confirmación de la placa
+      if (!reciente) {
+        chip($('fanChip'), 'Placa sin conexión: se aplicará al reconectar', 'warn');
+      } else if (d.fan_on === c.fan) {
+        chip($('fanChip'), c.fan ? 'Confirmado: girando' : 'Confirmado: detenido', 'ok');
+      } else {
+        chip($('fanChip'), 'Enviando a la placa…', 'warn');
+      }
+
+      if (typeof d.door_open !== 'boolean') chip($('doorChip'), 'Puerta: sin datos', '');
+      else chip($('doorChip'), d.door_open ? 'Puerta abierta' : 'Puerta cerrada', d.door_open ? 'warn' : 'ok');
+
+      const disparada = reciente && d.alarm_triggered;
+      $('doorCard').classList.toggle('alert', Boolean(disparada));
+      if (disparada) chip($('alarmChip'), '¡Alarma sonando! Desarma para silenciarla', 'danger');
+      else if (reciente && d.alarm_armed !== c.alarm_armed) chip($('alarmChip'), 'Enviando a la placa…', 'warn');
+      else if (reciente && c.alarm_armed) chip($('alarmChip'), 'Vigilando la puerta', 'ok');
+      else $('alarmChip').hidden = true;
+
+      // Texto del candado
+      const form = $('lockForm');
+      if (!controlHabilitado) {
+        $('lockText').textContent = 'Para usar los interruptores, agrega CONTROL_PIN en Render';
+        $('pin').hidden = true; $('pinBtn').hidden = true;
+      } else if (desbloqueado) {
+        $('lockText').textContent = 'Interruptores desbloqueados en este dispositivo';
+        $('pin').hidden = true; $('pinBtn').hidden = false; $('pinBtn').textContent = 'Bloquear';
+      } else {
+        $('lockText').textContent = 'Ingresa el PIN para usar los interruptores';
+        $('pin').hidden = false; $('pinBtn').hidden = false; $('pinBtn').textContent = 'Desbloquear';
+      }
+      form.dataset.state = desbloqueado ? 'open' : 'locked';
+    }
+
+    async function enviarOrden(cambios, input) {
+      enviando = true;
+      pintarControl();
+      try {
+        const r = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-control-pin': pin },
+          body: JSON.stringify(cambios),
+        });
+        if (r.status === 401) {
+          pin = '';
+          try { localStorage.removeItem(PIN_KEY); } catch (e) {}
+          $('pinError').textContent = 'El PIN cambió. Vuelve a ingresarlo.';
+          input.checked = !input.checked;
+        } else if (!r.ok) {
+          input.checked = !input.checked;
+          $('pinError').textContent = 'No se pudo enviar la orden. Intenta de nuevo.';
+        } else {
+          estadoControl = await r.json();
+          $('pinError').textContent = '';
+        }
+      } catch (e) {
+        input.checked = !input.checked;
+        $('pinError').textContent = 'Sin conexión con el servidor.';
+      }
+      enviando = false;
+      pintarControl();
+    }
+
+    $('fanSwitch').addEventListener('change', (e) => enviarOrden({ fan: e.target.checked }, e.target));
+    $('alarmSwitch').addEventListener('change', (e) => enviarOrden({ alarm_armed: e.target.checked }, e.target));
+
+    $('lockForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('pinError').textContent = '';
+      if ($('lockForm').dataset.state === 'open') {
+        pin = '';
+        try { localStorage.removeItem(PIN_KEY); } catch (err) {}
+        pintarControl();
+        return;
+      }
+      const valor = $('pin').value.trim();
+      if (!valor) { $('pinError').textContent = 'Escribe el PIN.'; return; }
+      try {
+        const r = await fetch('/api/control/check', { method: 'POST', headers: { 'x-control-pin': valor } });
+        if (r.ok) {
+          pin = valor;
+          try { localStorage.setItem(PIN_KEY, valor); } catch (err) {}
+          $('pin').value = '';
+        } else {
+          $('pinError').textContent = r.status === 401 ? 'PIN incorrecto.' : 'El control no está configurado en el servidor.';
+        }
+      } catch (err) {
+        $('pinError').textContent = 'Sin conexión con el servidor.';
+      }
+      pintarControl();
+    });
+    $('pin').addEventListener('input', () => { $('pinError').textContent = ''; });
+
+    // ---------- Instalar como app ----------
+    let avisoInstalar = null;
+    const yaInstalada = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const esIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      avisoInstalar = e;
+      $('installBtn').hidden = false;
+    });
+    window.addEventListener('appinstalled', () => {
+      avisoInstalar = null;
+      $('installBtn').hidden = true;
+      $('installHelp').hidden = true;
+    });
+
+    // En iPhone no existe el aviso automático: mostramos el botón con instrucciones
+    if (!yaInstalada() && esIOS) $('installBtn').hidden = false;
+
+    $('installBtn').addEventListener('click', async () => {
+      if (avisoInstalar) {
+        avisoInstalar.prompt();
+        await avisoInstalar.userChoice.catch(() => {});
+        avisoInstalar = null;
+        $('installBtn').hidden = true;
+        return;
+      }
+      const ayuda = $('installHelp');
+      ayuda.innerHTML = esIOS
+        ? '<b>Instalar en iPhone o iPad</b><ol><li>Abre esta página en <b>Safari</b>.</li><li>Toca el botón <b>Compartir</b> (cuadro con flecha hacia arriba).</li><li>Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.</li></ol>'
+        : '<b>Instalar la app</b><ol><li>En Android, abre el menú <b>⋮</b> de Chrome y elige <b>Instalar app</b> o <b>Agregar a pantalla principal</b>.</li><li>En computadora, usa el ícono de instalar en la barra de direcciones de Chrome o Edge.</li></ol>';
+      ayuda.hidden = !ayuda.hidden;
+    });
+    // Mostrar el botón con instrucciones aunque el navegador no haya lanzado el aviso
+    setTimeout(() => { if (!yaInstalada() && !avisoInstalar) $('installBtn').hidden = false; }, 3000);
+
     crearGrafica();
     cargarUltima();
     cargarHistorial();
-    setInterval(cargarUltima, 10000);
+    pintarControl();
+    setInterval(cargarUltima, 3000);
     setInterval(cargarHistorial, 30000);
     setInterval(pintarEstado, 1000);
   </script>
