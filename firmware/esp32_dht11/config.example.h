@@ -3,14 +3,15 @@
 
 #pragma once
 
-#define WIFI_SSID        "NOMBRE_DE_TU_WIFI"
-#define WIFI_PASSWORD    "CLAVE_DE_TU_WIFI"
+#define WIFI_SSID      "NOMBRE_DE_TU_WIFI"
+#define WIFI_PASSWORD  "CLAVE_DE_TU_WIFI"
 
-// URL de tu servicio en Render, SIN "/" al final y SIN "/api/readings"
-#define SERVER_BASE_URL  "https://TU-SERVICIO.onrender.com"
+// URL de tu servicio en Render + /api/readings
+// (la ruta de control /api/sync se deriva sola de esta URL)
+#define SERVER_URL     "https://TU-SERVICIO.onrender.com/api/readings"
 
 // La misma API_KEY que aparece en Render → Environment
-#define API_KEY          "PEGA_AQUI_TU_API_KEY"
+#define API_KEY        "PEGA_AQUI_TU_API_KEY"
 
 // Nombre del dispositivo (útil si luego agregas más ESP32)
-#define DEVICE_ID        "esp32-sala"
+#define DEVICE_ID      "esp32-sala"

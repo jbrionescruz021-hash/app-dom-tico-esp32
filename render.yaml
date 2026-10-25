@@ -12,7 +12,7 @@ services:
       - key: API_KEY
         generateValue: true   # Render genera una clave segura; cópiala a config.h
       - key: CONTROL_PIN
-        sync: false           # PIN que se pide en el dashboard para usar los interruptores
+        sync: false           # Render te lo pide al crear el servicio: es el PIN para operar los switches
       # Opcional: para guardar el historial de forma permanente,
       # crea una base Postgres y pega aquí su "Internal Database URL".
       # - key: DATABASE_URL

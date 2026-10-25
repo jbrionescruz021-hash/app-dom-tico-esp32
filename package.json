@@ -1,7 +1,7 @@
 {
   "name": "app-domotico-esp32",
   "version": "1.0.0",
-  "description": "Dashboard web para ESP32 con sensor DHT11, desplegado en Render",
+  "description": "Dashboard web (instalable como app) para ESP32 con DHT11, ventilador y alarma magnética RC-36, desplegado en Render",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

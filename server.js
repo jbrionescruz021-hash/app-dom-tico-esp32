@@ -1,7 +1,5 @@
 // App Domótico ESP32 — servidor para Render
-// - Recibe lecturas del ESP32 (POST /api/readings) y su estado cada pocos segundos (POST /api/device).
-// - Guarda las órdenes del dashboard (ventilador, alarma de puerta) y se las entrega a la placa.
-// - Sirve el dashboard, instalable como app en el teléfono.
+// Recibe lecturas del ESP32 (POST /api/readings) y sirve el dashboard.
 // Guarda en Postgres si existe DATABASE_URL; si no, en memoria (se pierde al reiniciar).
 
 const express = require('express');
@@ -9,24 +7,69 @@ const path = require('path');
 const crypto = require('crypto');
 
 const app = express();
+app.set('trust proxy', 1); // Render está detrás de un proxy: así req.ip es la IP real
 app.use(express.json({ limit: '10kb' }));
 
 const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.API_KEY || '';          // clave de la placa
-const CONTROL_PIN = process.env.CONTROL_PIN || '';  // PIN para usar los interruptores del dashboard
+const API_KEY = process.env.API_KEY || '';
 const MAX_EN_MEMORIA = 20000; // ~3.5 días a 1 lectura cada 15 s
 const MAX_HORAS = 24 * 7;
+
+// ---- Control remoto (ventilador y alarma magnética RC-36) ----
+const CONTROL_PIN = process.env.CONTROL_PIN || '';   // PIN que protege los switches del dashboard
+const OFFLINE_MS = 20000;                            // sin sincronizar en 20 s → ESP32 desconectado
+const MAX_FALLOS = 8;                                // intentos de PIN fallidos por IP...
+const VENTANA_FALLOS_MS = 10 * 60 * 1000;            // ...dentro de esta ventana
+
+const control = {
+  deseado: { fan: false, alarm: 'closed' },          // lo que pide el dashboard
+  actual: { fan: null, alarm: null, contact: null }, // lo que reporta el ESP32
+  device: null,
+  visto: 0,
+};
+const fallos = new Map();
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [ip, f] of fallos) if (ahora > f.hasta) fallos.delete(ip);
+}, VENTANA_FALLOS_MS).unref();
+
+const enLinea = () => control.visto > 0 && Date.now() - control.visto <= OFFLINE_MS;
+
+function estadoPublico() {
+  return {
+    desired: control.deseado,
+    actual: control.actual,
+    device: control.device,
+    online: enLinea(),
+    controls_enabled: Boolean(CONTROL_PIN),
+    server_time: new Date().toISOString(),
+  };
+}
+
+function pinCorrecto(recibido) {
+  const h = (v) => crypto.createHash('sha256').update(String(v)).digest();
+  return crypto.timingSafeEqual(h(recibido), h(CONTROL_PIN));
+}
+
+function bloqueado(ip) {
+  const f = fallos.get(ip);
+  if (!f) return false;
+  if (Date.now() > f.hasta) { fallos.delete(ip); return false; }
+  return f.n >= MAX_FALLOS;
+}
+
+function registrarFallo(ip) {
+  const f = fallos.get(ip);
+  if (!f || Date.now() > f.hasta) fallos.set(ip, { n: 1, hasta: Date.now() + VENTANA_FALLOS_MS });
+  else f.n++;
+}
 
 let pool = null;
 const memoria = [];
 
-// Órdenes del dashboard (lo que el usuario quiere) y estado real que reporta la placa
-let control = { fan: false, alarm_armed: false, updated_at: new Date().toISOString() };
-let dispositivo = null; // { device, fan_on, alarm_armed, door_open, alarm_triggered, seen_at }
-
 async function iniciarAlmacenamiento() {
   if (!process.env.DATABASE_URL) {
-    console.log('Sin DATABASE_URL: guardando datos en memoria.');
+    console.log('Sin DATABASE_URL: guardando lecturas en memoria.');
     return;
   }
   const { Pool } = require('pg');
@@ -40,16 +83,7 @@ async function iniciarAlmacenamiento() {
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS readings_created_at_idx ON readings (created_at);
-    CREATE TABLE IF NOT EXISTS control (
-      id          INTEGER PRIMARY KEY,
-      fan         BOOLEAN     NOT NULL DEFAULT false,
-      alarm_armed BOOLEAN     NOT NULL DEFAULT false,
-      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-    INSERT INTO control (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
   `);
-  const { rows } = await pool.query('SELECT fan, alarm_armed, updated_at FROM control WHERE id = 1');
-  if (rows[0]) control = rows[0];
   console.log('Postgres listo.');
 }
 
@@ -65,15 +99,6 @@ async function guardar(lectura) {
   memoria.push(fila);
   if (memoria.length > MAX_EN_MEMORIA) memoria.shift();
   return fila;
-}
-
-async function guardarControl(cambios) {
-  control = { ...control, ...cambios, updated_at: new Date().toISOString() };
-  if (pool) {
-    await pool.query('UPDATE control SET fan = $1, alarm_armed = $2, updated_at = now() WHERE id = 1',
-      [control.fan, control.alarm_armed]);
-  }
-  return control;
 }
 
 async function ultima() {
@@ -118,34 +143,12 @@ function reducir(filas, maxPuntos = 600) {
   return salida;
 }
 
-// Comparación en tiempo constante para claves y PIN
-function igual(a, b) {
-  const x = Buffer.from(String(a || ''));
-  const y = Buffer.from(String(b || ''));
-  return x.length === y.length && crypto.timingSafeEqual(x, y);
-}
-const esPlaca = (req) => !API_KEY || igual(req.get('x-api-key'), API_KEY);
-
-// Respuesta corta para la placa: lo que debe hacer ahora
-const ordenes = () => ({ fan: control.fan, alarm_armed: control.alarm_armed });
-
-function registrarDispositivo(body) {
-  const b = (v) => (typeof v === 'boolean' ? v : undefined);
-  dispositivo = {
-    ...(dispositivo || {}),
-    device: String(body.device || dispositivo?.device || 'esp32').slice(0, 64),
-    ...(b(body.fan_on) !== undefined && { fan_on: body.fan_on }),
-    ...(b(body.alarm_armed) !== undefined && { alarm_armed: body.alarm_armed }),
-    ...(b(body.door_open) !== undefined && { door_open: body.door_open }),
-    ...(b(body.alarm_triggered) !== undefined && { alarm_triggered: body.alarm_triggered }),
-    seen_at: new Date().toISOString(),
-  };
-}
-
-// ---------- API de la placa ----------
+// ---------- API ----------
 
 app.post('/api/readings', async (req, res) => {
-  if (!esPlaca(req)) return res.status(401).json({ error: 'API key inválida' });
+  if (API_KEY && req.get('x-api-key') !== API_KEY) {
+    return res.status(401).json({ error: 'API key inválida' });
+  }
 
   const temperature = Number(req.body?.temperature);
   const humidity = Number(req.body?.humidity);
@@ -160,33 +163,17 @@ app.post('/api/readings', async (req, res) => {
   }
 
   try {
-    registrarDispositivo(req.body || {});
     const fila = await guardar({ device, temperature, humidity });
-    res.status(201).json({ ...fila, control: ordenes() });
+    res.status(201).json(fila);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'No se pudo guardar' });
   }
 });
 
-// Latido de la placa cada pocos segundos: reporta su estado y recibe las órdenes
-app.post('/api/device', (req, res) => {
-  if (!esPlaca(req)) return res.status(401).json({ error: 'API key inválida' });
-  registrarDispositivo(req.body || {});
-  res.json(ordenes());
-});
-
-// ---------- API del dashboard ----------
-
 app.get('/api/latest', async (_req, res) => {
   try {
-    res.json({
-      reading: await ultima(),
-      control,
-      device: dispositivo,
-      control_enabled: Boolean(CONTROL_PIN),
-      server_time: new Date().toISOString(),
-    });
+    res.json({ reading: await ultima(), server_time: new Date().toISOString() });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error leyendo datos' });
@@ -204,37 +191,61 @@ app.get('/api/readings', async (req, res) => {
   }
 });
 
-// Comprueba el PIN sin cambiar nada (para desbloquear los interruptores)
-app.post('/api/control/check', (req, res) => {
-  if (!CONTROL_PIN) return res.status(503).json({ error: 'Falta configurar CONTROL_PIN en Render' });
-  if (!igual(req.get('x-control-pin'), CONTROL_PIN)) return res.status(401).json({ error: 'PIN incorrecto' });
-  res.json({ ok: true });
+// El ESP32 llama aquí cada pocos segundos: reporta su estado real y recibe el estado deseado.
+app.post('/api/sync', (req, res) => {
+  if (API_KEY && req.get('x-api-key') !== API_KEY) {
+    return res.status(401).json({ error: 'API key inválida' });
+  }
+  const b = req.body || {};
+  control.device = String(b.device || 'esp32').slice(0, 64);
+  control.actual = {
+    fan: typeof b.fan === 'boolean' ? b.fan : null,
+    alarm: b.alarm === 'open' || b.alarm === 'closed' ? b.alarm : null,
+    contact: b.contact === 'open' || b.contact === 'closed' ? b.contact : null,
+  };
+  control.visto = Date.now();
+  res.json({ fan: control.deseado.fan, alarm: control.deseado.alarm });
 });
 
-app.post('/api/control', async (req, res) => {
-  if (!CONTROL_PIN) return res.status(503).json({ error: 'Falta configurar CONTROL_PIN en Render' });
-  if (!igual(req.get('x-control-pin'), CONTROL_PIN)) return res.status(401).json({ error: 'PIN incorrecto' });
+// Estado de los switches (lo lee el dashboard)
+app.get('/api/state', (_req, res) => res.json(estadoPublico()));
 
-  const cambios = {};
-  if (typeof req.body?.fan === 'boolean') cambios.fan = req.body.fan;
-  if (typeof req.body?.alarm_armed === 'boolean') cambios.alarm_armed = req.body.alarm_armed;
-  if (!Object.keys(cambios).length) return res.status(400).json({ error: 'Nada que cambiar' });
-
-  try {
-    res.json(await guardarControl(cambios));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'No se pudo guardar la orden' });
+// El dashboard envía aquí las órdenes. Requiere el PIN en el header x-control-pin.
+// Body: { fan: true|false, alarm: 'open'|'closed' } (cualquiera de los dos). Con body vacío solo verifica el PIN.
+app.post('/api/control', (req, res) => {
+  if (!CONTROL_PIN) {
+    return res.status(503).json({ error: 'Controles deshabilitados: define la variable CONTROL_PIN en el servidor.' });
   }
+  if (bloqueado(req.ip)) {
+    return res.status(429).json({ error: 'Demasiados intentos fallidos. Espera unos minutos.' });
+  }
+  if (!pinCorrecto(req.get('x-control-pin') || '')) {
+    registrarFallo(req.ip);
+    return res.status(401).json({ error: 'PIN incorrecto' });
+  }
+  fallos.delete(req.ip);
+
+  const { fan, alarm } = req.body || {};
+  const hayFan = fan !== undefined;
+  const hayAlarm = alarm !== undefined;
+  if (!hayFan && !hayAlarm) return res.json(estadoPublico()); // solo verificación del PIN
+
+  if (hayFan && typeof fan !== 'boolean') {
+    return res.status(400).json({ error: 'fan debe ser true o false' });
+  }
+  if (hayAlarm && alarm !== 'open' && alarm !== 'closed') {
+    return res.status(400).json({ error: "alarm debe ser 'open' o 'closed'" });
+  }
+  // Seguridad: no dejamos órdenes en cola; si el ESP32 está caído, el comando se rechaza.
+  if (!enLinea()) {
+    return res.status(409).json({ error: 'El ESP32 está sin conexión; no se envió el comando.' });
+  }
+  if (hayFan) control.deseado.fan = fan;
+  if (hayAlarm) control.deseado.alarm = alarm;
+  res.json(estadoPublico());
 });
 
 app.get('/healthz', (_req, res) => res.send('ok'));
-
-// El service worker no debe quedar en caché para que las actualizaciones lleguen
-app.get('/sw.js', (_req, res) => {
-  res.set('Cache-Control', 'no-cache');
-  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
-});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
